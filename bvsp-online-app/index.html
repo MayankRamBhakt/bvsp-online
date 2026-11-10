@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BVSP ONLINE - Emergency Medical Telemetry Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        navy: {
+                            950: '#060911',
+                            900: '#090D16',
+                            850: '#0D1424',
+                            800: '#111827',
+                            700: '#1F2937',
+                            600: '#374151'
+                        },
+                        medical: {
+                            blue: '#2563EB',
+                            lightBlue: '#3B82F6',
+                            green: '#10B981',
+                            red: '#EF4444',
+                            amber: '#F59E0B'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #090D16;
+            color: #F8FAFC;
+        }
+        .pulse-online {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+            animation: pulse-green 2s infinite;
+        }
+        .pulse-offline {
+            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+            animation: pulse-red 2s infinite;
+        }
+        @keyframes pulse-green {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+        @keyframes pulse-red {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        /* Custom scrollbar for dark UI */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0D1424;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1F2937;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #374151;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-sans antialiased text-slate-100 selection:bg-blue-600 selection:text-white">
+
+    <!-- Top Alert Bar / Toast Notification Container -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col space-y-2 max-w-sm w-full pointer-events-none"></div>
+
+    <!-- Main Header -->
+    <header class="border-b border-slate-800 bg-navy-850/90 backdrop-blur sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <!-- Title & Subtitle -->
+            <div class="flex items-center space-x-3 text-center sm:text-left">
+                <div class="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
+                    <i class="fa-solid fa-heart-pulse text-xl animate-pulse"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-extrabold tracking-wider text-slate-50 font-mono">BVSP TELEMETRY</h1>
+                    <p class="text-xs text-slate-400 font-medium">Basic Vital Signs Protocol &bull; Advanced Field Triage Platform</p>
+                </div>
+            </div>
+
+            <!-- Network Status Toggle & Stats -->
+            <div class="flex items-center space-x-3">
+                <!-- Quick Stats Badge -->
+                <div class="hidden md:flex items-center space-x-3 bg-navy-800 border border-slate-800 px-3 py-1.5 rounded-lg text-xs font-mono">
+                    <div><span class="text-slate-400">Total:</span> <span id="stat-total" class="font-bold text-slate-200">0</span></div>
+                    <div class="text-slate-600">|</div>
+                    <div><span class="text-red-400">Critical:</span> <span id="stat-critical" class="font-bold text-red-400">0</span></div>
+                    <div class="text-slate-600">|</div>
+                    <div><span class="text-amber-400">Cached:</span> <span id="stat-cached" class="font-bold text-amber-400">0</span></div>
+                </div>
+
+                <!-- Network State Switcher -->
+                <button id="network-toggle-btn" onclick="toggleNetworkStatus()" class="flex items-center space-x-2.5 bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 px-3.5 py-1.5 rounded-full text-xs font-semibold hover:bg-emerald-900/40 transition-all duration-200 cursor-pointer">
+                    <span id="network-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-online"></span>
+                    <span id="network-text">Online (Live Sync)</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- LEFT COLUMN: Vital Signs Entry Form & Quick Presets -->
+        <section class="lg:col-span-5 flex flex-col space-y-6">
+            
+            <!-- Quick Preset Action Card -->
+            <div class="bg-navy-800 border border-slate-800 rounded-xl p-4 shadow-xl">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-bold font-mono tracking-wider text-slate-400 uppercase">Quick Test Simulation Profiles</span>
+                    <i class="fa-solid fa-bolt text-amber-400 text-xs"></i>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="applyPreset('normal')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium py-1.5 px-2 rounded-lg transition text-center">
+                        <i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> Normal
+                    </button>
+                    <button onclick="applyPreset('tachycardia')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium py-1.5 px-2 rounded-lg transition text-center">
+                        <i class="fa-solid fa-triangle-exclamation text-amber-400 mr-1"></i> High HR
+                    </button>
+                    <button onclick="applyPreset('hypoxia')" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-medium py-1.5 px-2 rounded-lg transition text-center">
+                        <i class="fa-solid fa-circle-exclamation text-red-400 mr-1"></i> Low SpO2
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Input Form Card -->
+            <div class="bg-navy-800 border border-slate-800 rounded-xl p-5 shadow-2xl relative overflow-hidden">
+                <div class="flex items-center justify-between mb-5 border-b border-slate-800 pb-3">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-clipboard-user text-blue-400"></i>
+                        <h2 class="text-sm font-bold tracking-wider text-slate-200 uppercase font-mono">Patient Vital Signs Entry</h2>
+                    </div>
+                    <span class="text-xs text-slate-400 bg-slate-900 border border-slate-700 px-2 py-0.5 rounded font-mono">Protocol v2.4</span>
+                </div>
+
+                <form id="vitals-form" onsubmit="handleFormSubmit(event)" class="space-y-4">
+                    
+                    <!-- Patient ID Field -->
+                    <div>
+                        <label for="patient-id" class="block text-xs font-semibold text-slate-300 mb-1.5">
+                            Patient ID / Incident Case # <span class="text-red-400">*</span>
+                        </label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                                <i class="fa-solid fa-id-badge"></i>
+                            </span>
+                            <input type="text" id="patient-id" required placeholder="e.g. PT-409"
+                                class="w-full bg-navy-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2.5 text-slate-100 text-sm font-mono placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+                        </div>
+                    </div>
+
+                    <!-- Row 1: Heart Rate & SpO2 -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="heart-rate" class="block text-xs font-semibold text-slate-300 mb-1.5">
+                                Heart Rate (BPM) <span class="text-red-400">*</span>
+                            </label>
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                                    <i class="fa-solid fa-heart"></i>
+                                </span>
+                                <input type="number" id="heart-rate" required min="20" max="300" placeholder="72"
+                                    class="w-full bg-navy-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2.5 text-slate-100 text-sm font-mono placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+                            </div>
+                            <span class="text-[10px] text-slate-500 mt-1 block font-mono">Normal: 60-100 BPM</span>
+                        </div>
+
+                        <div>
+                            <label for="spo2" class="block text-xs font-semibold text-slate-300 mb-1.5">
+                                SpO2 (%) <span class="text-red-400">*</span>
+                            </label>
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                                    <i class="fa-solid fa-lungs"></i>
+                                </span>
+                                <input type="number" id="spo2" required min="50" max="100" placeholder="98"
+                                    class="w-full bg-navy-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2.5 text-slate-100 text-sm font-mono placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+                            </div>
+                            <span class="text-[10px] text-slate-500 mt-1 block font-mono">Target: &ge; 95%</span>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Blood Pressure & Temperature -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label for="bp" class="block text-xs font-semibold text-slate-300 mb-1.5">
+                                Blood Pressure <span class="text-red-400">*</span>
+                            </label>
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                                    <i class="fa-solid fa-gauge-high"></i>
+                                </span>
+                                <input type="text" id="bp" required placeholder="120/80" pattern="^\d{2,3}\/\d{2,3}$" title="Format: Systolic/Diastolic (e.g. 120/80)"
+                                    class="w-full bg-navy-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2.5 text-slate-100 text-sm font-mono placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+                            </div>
+                            <span class="text-[10px] text-slate-500 mt-1 block font-mono">Format: SYS/DIA</span>
+                        </div>
+
+                        <div>
+                            <label for="temp" class="block text-xs font-semibold text-slate-300 mb-1.5">
+                                Body Temp (°F) <span class="text-red-400">*</span>
+                            </label>
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                                    <i class="fa-solid fa-temperature-half"></i>
+                                </span>
+                                <input type="number" step="0.1" id="temp" required min="85" max="110" placeholder="98.6"
+                                    class="w-full bg-navy-900 border border-slate-700 rounded-lg pl-9 pr-3 py-2.5 text-slate-100 text-sm font-mono placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+                            </div>
+                            <span class="text-[10px] text-slate-500 mt-1 block font-mono">Fever: &gt; 100.4°F</span>
+                        </div>
+                    </div>
+
+                    <!-- Notes Field -->
+                    <div>
+                        <label for="notes" class="block text-xs font-semibold text-slate-300 mb-1.5">Field Responder Notes (Optional)</label>
+                        <input type="text" id="notes" placeholder="e.g. Patient complaining of shortness of breath"
+                            class="w-full bg-navy-900 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 text-xs placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="pt-2">
+                        <button type="submit" id="submit-btn" class="w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all duration-200 flex items-center justify-center space-x-2 cursor-pointer uppercase tracking-wider text-xs sm:text-sm">
+                            <i class="fa-solid fa-paper-plane" id="submit-icon"></i>
+                            <span id="submit-text">TRANSMIT TO CENTRAL MONITOR</span>
+                        </button>
+                    </div>
+
+                </form>
+            </div>
+
+            <!-- Triage Reference Legend Card -->
+            <div class="bg-navy-800 border border-slate-800 rounded-xl p-4 text-xs space-y-2">
+                <div class="font-bold font-mono text-slate-400 uppercase tracking-wider mb-1">Automated Triage Rules</div>
+                <div class="grid grid-cols-2 gap-2 font-mono">
+                    <div class="flex items-center space-x-2 bg-navy-900 p-2 rounded border border-slate-800">
+                        <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                        <span class="text-slate-300">SpO2 &lt; 92% (Hypoxia)</span>
+                    </div>
+                    <div class="flex items-center space-x-2 bg-navy-900 p-2 rounded border border-slate-800">
+                        <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                        <span class="text-slate-300">HR &gt; 120 / &lt; 50 BPM</span>
+                    </div>
+                    <div class="flex items-center space-x-2 bg-navy-900 p-2 rounded border border-slate-800">
+                        <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                        <span class="text-slate-300">Temp &gt; 100.4°F (Fever)</span>
+                    </div>
+                    <div class="flex items-center space-x-2 bg-navy-900 p-2 rounded border border-slate-800">
+                        <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                        <span class="text-slate-300">SYS &gt; 140 / DIA &gt; 90</span>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- RIGHT COLUMN: Live Telemetry Feed & Offline Queue -->
+        <section class="lg:col-span-7 flex flex-col space-y-4">
+            
+            <!-- Feed Header & Controls -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-navy-800 border border-slate-800 rounded-xl p-4">
+                <div>
+                    <h3 class="text-sm font-bold font-mono text-slate-100 tracking-wider uppercase flex items-center">
+                        <i class="fa-solid fa-satellite-dish text-emerald-400 mr-2"></i>
+                        Live Transmission Feed
+                    </h3>
+                    <p class="text-xs text-slate-400">Real-time incoming emergency vital records</p>
+                </div>
+                
+                <div class="flex items-center space-x-2">
+                    <!-- Sync Offline Records Button -->
+                    <button id="sync-cached-btn" onclick="syncOfflineQueue()" class="hidden bg-amber-500/20 border border-amber-500/50 hover:bg-amber-500/30 text-amber-300 text-xs font-semibold py-1.5 px-3 rounded-lg transition-all duration-200 items-center space-x-1.5 cursor-pointer">
+                        <i class="fa-solid fa-rotate animate-spin" id="sync-spinner" style="animation-duration: 3s;"></i>
+                        <span>Sync Cached (<span id="cached-count-badge">0</span>)</span>
+                    </button>
+
+                    <!-- Filter Options -->
+                    <select id="feed-filter" onchange="renderFeed()" class="bg-navy-900 border border-slate-700 text-xs text-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-500 font-mono">
+                        <option value="all">All Records</option>
+                        <option value="critical">Critical Only</option>
+                        <option value="cached">Cached Only</option>
+                    </select>
+
+                    <!-- Clear Feed -->
+                    <button onclick="confirmClearHistory()" title="Clear Feed History" class="bg-navy-900 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 text-xs p-1.5 rounded-lg transition">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Feed List Container -->
+            <div id="feed-container" class="flex-1 space-y-3 overflow-y-auto max-h-[calc(100vh-250px)] pr-1">
+                <!-- Records injected dynamically -->
+            </div>
+
+            <!-- Empty State Fallback (hidden when records exist) -->
+            <div id="empty-state" class="hidden flex-1 flex flex-col items-center justify-center p-12 bg-navy-800/40 border border-dashed border-slate-800 rounded-xl text-center">
+                <div class="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-slate-500 mb-3">
+                    <i class="fa-solid fa-notes-medical text-2xl"></i>
+                </div>
+                <h4 class="text-sm font-semibold text-slate-300">No Telemetry Streams Logged</h4>
+                <p class="text-xs text-slate-500 max-w-xs mt-1">Submit patient vitals using the field form or click a quick preset to simulate telemetry streams.</p>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 bg-navy-850 py-3 text-center text-xs font-mono text-slate-500">
+        BVSP Telemetry Protocol Platform &bull; HIPAA Compliant Field Node Simulation &bull; Status: <span id="footer-status" class="text-emerald-400 font-bold">CONNECTED</span>
+    </footer>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // State Management
+        let isOnline = true;
+        let records = [];
+
+        // Preset Medical Profiles
+        const presets = {
+            normal: { patientId: 'PT-101', hr: '74', spo2: '99', bp: '118/76', temp: '98.6', notes: 'Patient alert and oriented.' },
+            tachycardia: { patientId: 'PT-205', hr: '135', spo2: '94', bp: '145/95', temp: '99.1', notes: 'Severe tachycardia noted during transport.' },
+            hypoxia: { patientId: 'PT-309', hr: '112', spo2: '88', bp: '105/65', temp: '101.2', notes: 'Respiratory distress. Supplemental O2 applied.' }
+        };
+
+        // Initialize App on Load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadFromLocalStorage();
+            updateUI();
+        });
+
+        // Toggle Online/Offline State
+        function toggleNetworkStatus() {
+            isOnline = !isOnline;
+            const toggleBtn = document.getElementById('network-toggle-btn');
+            const dot = document.getElementById('network-dot');
+            const text = document.getElementById('network-text');
+            const submitBtn = document.getElementById('submit-btn');
+            const submitText = document.getElementById('submit-text');
+            const submitIcon = document.getElementById('submit-icon');
+            const footerStatus = document.getElementById('footer-status');
+
+            if (isOnline) {
+                // Switch to ONLINE
+                toggleBtn.className = "flex items-center space-x-2.5 bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 px-3.5 py-1.5 rounded-full text-xs font-semibold hover:bg-emerald-900/40 transition-all duration-200 cursor-pointer";
+                dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-online";
+                text.textContent = "Online (Live Sync)";
+
+                submitBtn.className = "w-full bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all duration-200 flex items-center justify-center space-x-2 cursor-pointer uppercase tracking-wider text-xs sm:text-sm";
+                submitText.textContent = "TRANSMIT TO CENTRAL MONITOR";
+                submitIcon.className = "fa-solid fa-paper-plane";
+
+                footerStatus.textContent = "CONNECTED";
+                footerStatus.className = "text-emerald-400 font-bold";
+
+                showToast("Network Status Changed", "Reconnected to Central Telemetry Server.", "success");
+            } else {
+                // Switch to OFFLINE
+                toggleBtn.className = "flex items-center space-x-2.5 bg-red-950/40 border border-red-500/40 text-red-300 px-3.5 py-1.5 rounded-full text-xs font-semibold hover:bg-red-900/40 transition-all duration-200 cursor-pointer";
+                dot.className = "w-2.5 h-2.5 rounded-full bg-red-400 pulse-offline";
+                text.textContent = "Offline (Cached Mode)";
+
+                submitBtn.className = "w-full bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-all duration-200 flex items-center justify-center space-x-2 cursor-pointer uppercase tracking-wider text-xs sm:text-sm";
+                submitText.textContent = "STORE TO LOCAL OFFLINE CACHE";
+                submitIcon.className = "fa-solid fa-box-archive";
+
+                footerStatus.textContent = "OFFLINE (LOCAL CACHE ACTIVE)";
+                footerStatus.className = "text-amber-400 font-bold";
+
+                showToast("Network Connection Lost", "Operating in Offline Cache Mode. Telemetry will be queued locally.", "warning");
+            }
+
+            updateUI();
+        }
+
+        // Apply Preset Profile into Form
+        function applyPreset(type) {
+            const data = presets[type];
+            if (!data) return;
+
+            document.getElementById('patient-id').value = `${data.patientId}-${Math.floor(Math.random()*90 + 10)}`;
+            document.getElementById('heart-rate').value = data.hr;
+            document.getElementById('spo2').value = data.spo2;
+            document.getElementById('bp').value = data.bp;
+            document.getElementById('temp').value = data.temp;
+            document.getElementById('notes').value = data.notes;
+
+            showToast("Preset Loaded", `Applied sample vitals profile: ${type.toUpperCase()}`, "info");
+        }
+
+        // Triage Logic Evaluator
+        function evaluateTriage(hr, spo2, bp, temp) {
+            const warnings = [];
+            const hrNum = parseInt(hr, 10);
+            const spo2Num = parseInt(spo2, 10);
+            const tempNum = parseFloat(temp);
+
+            // Parse BP (Systolic / Diastolic)
+            let sys = 0, dia = 0;
+            if (bp.includes('/')) {
+                const parts = bp.split('/');
+                sys = parseInt(parts[0], 10);
+                dia = parseInt(parts[1], 10);
+            }
+
+            if (spo2Num < 92) warnings.push(`Low SpO2 (${spo2Num}% < 92% Hypoxia risk)`);
+            if (hrNum > 120) warnings.push(`High HR (${hrNum} BPM Tachycardia)`);
+            if (hrNum < 50) warnings.push(`Low HR (${hrNum} BPM Bradycardia)`);
+            if (tempNum > 100.4) warnings.push(`High Fever (${tempNum}°F)`);
+            if (sys > 140 || dia > 90) warnings.push(`Hypertension (${bp} mmHg)`);
+
+            return {
+                isCritical: warnings.length > 0,
+                warnings: warnings
+            };
+        }
+
+        // Handle Form Submission
+        function handleFormSubmit(event) {
+            event.preventDefault();
+
+            const patientId = document.getElementById('patient-id').value.trim();
+            const heartRate = document.getElementById('heart-rate').value.trim();
+            const spo2 = document.getElementById('spo2').value.trim();
+            const bp = document.getElementById('bp').value.trim();
+            const temp = document.getElementById('temp').value.trim();
+            const notes = document.getElementById('notes').value.trim();
+
+            if (!patientId || !heartRate || !spo2 || !bp || !temp) {
+                showToast("Missing Fields", "Please complete all mandatory vital sign inputs.", "error");
+                return;
+            }
+
+            const triage = evaluateTriage(heartRate, spo2, bp, temp);
+            const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+            const newRecord = {
+                id: 'REC-' + Date.now().toString(36).toUpperCase(),
+                patientId,
+                heartRate,
+                spo2,
+                bp,
+                temp,
+                notes,
+                critical: triage.isCritical,
+                warnings: triage.warnings,
+                synced: isOnline,
+                timestamp
+            };
+
+            records.unshift(newRecord);
+            saveToLocalStorage();
+            updateUI();
+
+            // Clear inputs except Patient ID for fast consecutive entries
+            document.getElementById('heart-rate').value = '';
+            document.getElementById('spo2').value = '';
+            document.getElementById('bp').value = '';
+            document.getElementById('temp').value = '';
+            document.getElementById('notes').value = '';
+
+            if (triage.isCritical) {
+                showToast("⚠️ CRITICAL TELEMETRY ALERT", `Patient ${patientId} flagged with priority warnings!`, "error");
+            } else {
+                showToast(
+                    isOnline ? "Telemetry Transmitted" : "Record Offline Cached",
+                    isOnline ? `Vitals sent for ${patientId}` : `Saved locally for ${patientId}`,
+                    isOnline ? "success" : "warning"
+                );
+            }
+        }
+
+        // Render Telemetry Feed
+        function renderFeed() {
+            const container = document.getElementById('feed-container');
+            const emptyState = document.getElementById('empty-state');
+            const filter = document.getElementById('feed-filter').value;
+
+            let filtered = records;
+            if (filter === 'critical') filtered = records.filter(r => r.critical);
+            if (filter === 'cached') filtered = records.filter(r => !r.synced);
+
+            if (filtered.length === 0) {
+                container.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            } else {
+                emptyState.classList.add('hidden');
+            }
+
+            container.innerHTML = filtered.map(r => `
+                <div class="bg-navy-800 border ${r.critical ? 'border-red-500/70 bg-red-950/10' : 'border-slate-800'} rounded-xl p-4 shadow-lg transition hover:border-slate-700">
+                    
+                    <!-- Card Header -->
+                    <div class="flex items-center justify-between mb-2.5">
+                        <div class="flex items-center space-x-2">
+                            <span class="font-mono font-bold text-sm text-slate-100">${escapeHtml(r.patientId)}</span>
+                            ${r.critical ? 
+                                `<span class="bg-red-500/20 text-red-400 border border-red-500/40 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider flex items-center">
+                                    <i class="fa-solid fa-triangle-exclamation mr-1"></i> Critical Triage
+                                 </span>` : 
+                                `<span class="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
+                                    Normal
+                                 </span>`
+                            }
+                        </div>
+
+                        <div class="flex items-center space-x-2">
+                            <span class="text-[11px] font-mono font-semibold ${r.synced ? 'text-emerald-400' : 'text-amber-400'} flex items-center">
+                                <i class="fa-solid ${r.synced ? 'fa-cloud-check' : 'fa-hard-drive'} mr-1"></i>
+                                ${r.synced ? 'SYNCED' : 'CACHED'}
+                            </span>
+                            <span class="text-[11px] font-mono text-slate-500">${r.timestamp}</span>
+                        </div>
+                    </div>
+
+                    <!-- Vitals Grid -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-navy-900 border border-slate-800/80 rounded-lg p-2.5 font-mono text-xs">
+                        <div>
+                            <span class="text-slate-500 text-[10px] block">HEART RATE</span>
+                            <span class="font-bold ${parseInt(r.heartRate) > 120 || parseInt(r.heartRate) < 50 ? 'text-red-400' : 'text-slate-200'}">
+                                ${escapeHtml(r.heartRate)} <span class="text-[10px] text-slate-500">BPM</span>
+                            </span>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 text-[10px] block">SpO2</span>
+                            <span class="font-bold ${parseInt(r.spo2) < 92 ? 'text-red-400' : 'text-slate-200'}">
+                                ${escapeHtml(r.spo2)}%
+                            </span>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 text-[10px] block">BLOOD PRESS.</span>
+                            <span class="font-bold text-slate-200">${escapeHtml(r.bp)}</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 text-[10px] block">BODY TEMP</span>
+                            <span class="font-bold ${parseFloat(r.temp) > 100.4 ? 'text-red-400' : 'text-slate-200'}">
+                                ${escapeHtml(r.temp)}°F
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Critical Warnings List -->
+                    ${r.critical && r.warnings.length > 0 ? `
+                        <div class="mt-2.5 bg-red-950/30 border border-red-500/30 rounded p-2 text-xs text-red-300 font-mono space-y-1">
+                            <div class="font-bold text-[10px] text-red-400 uppercase tracking-wider">Triggered Alert Conditions:</div>
+                            ${r.warnings.map(w => `<div class="flex items-center text-[11px]"><i class="fa-solid fa-angle-right mr-1.5 text-red-400"></i> ${escapeHtml(w)}</div>`).join('')}
+                        </div>
+                    ` : ''}
+
+                    <!-- Optional Responder Notes -->
+                    ${r.notes ? `
+                        <div class="mt-2 text-xs text-slate-400 italic bg-navy-900/50 px-2.5 py-1.5 rounded border border-slate-800">
+                            <span class="text-slate-500 not-italic font-semibold">Note:</span> "${escapeHtml(r.notes)}"
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+
+        // Sync All Local Cached Records to Cloud
+        function syncOfflineQueue() {
+            if (!isOnline) {
+                showToast("Cannot Sync", "Switch network state to Online (Live Sync) to transmit queue.", "warning");
+                return;
+            }
+
+            const cachedRecords = records.filter(r => !r.synced);
+            if (cachedRecords.length === 0) return;
+
+            // Mark all as synced
+            records.forEach(r => r.synced = true);
+            saveToLocalStorage();
+            updateUI();
+
+            showToast("Cloud Sync Complete", `Successfully uploaded ${cachedRecords.length} offline cached record(s) to central telemetry monitor.`, "success");
+        }
+
+        // Update Stats & UI Elements
+        function updateUI() {
+            renderFeed();
+
+            const total = records.length;
+            const critical = records.filter(r => r.critical).length;
+            const cached = records.filter(r => !r.synced).length;
+
+            document.getElementById('stat-total').textContent = total;
+            document.getElementById('stat-critical').textContent = critical;
+            document.getElementById('stat-cached').textContent = cached;
+
+            const syncBtn = document.getElementById('sync-cached-btn');
+            const cachedBadge = document.getElementById('cached-count-badge');
+            
+            if (cached > 0) {
+                syncBtn.classList.remove('hidden');
+                syncBtn.classList.add('flex');
+                cachedBadge.textContent = cached;
+            } else {
+                syncBtn.classList.add('hidden');
+                syncBtn.classList.remove('flex');
+            }
+        }
+
+        // Clear All History
+        function confirmClearHistory() {
+            if (records.length === 0) return;
+            if (confirm("Are you sure you want to clear the local telemetry feed log?")) {
+                records = [];
+                saveToLocalStorage();
+                updateUI();
+                showToast("Feed Cleared", "Telemetry record history cleared.", "info");
+            }
+        }
+
+        // Local Storage Utilities
+        function saveToLocalStorage() {
+            try {
+                localStorage.setItem('bvsp_telemetry_records', JSON.stringify(records));
+            } catch (e) {
+                console.error("Storage save failed:", e);
+            }
+        }
+
+        function loadFromLocalStorage() {
+            try {
+                const saved = localStorage.getItem('bvsp_telemetry_records');
+                if (saved) {
+                    records = JSON.parse(saved);
+                }
+            } catch (e) {
+                console.error("Storage load failed:", e);
+                records = [];
+            }
+        }
+
+        // Custom Toast Notification System
+        function showToast(title, message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            let bgBorder = 'bg-navy-800 border-slate-700 text-slate-100';
+            let icon = 'fa-info-circle text-blue-400';
+
+            if (type === 'success') {
+                bgBorder = 'bg-emerald-950 border-emerald-500/60 text-emerald-100';
+                icon = 'fa-circle-check text-emerald-400';
+            } else if (type === 'warning') {
+                bgBorder = 'bg-amber-950 border-amber-500/60 text-amber-100';
+                icon = 'fa-triangle-exclamation text-amber-400';
+            } else if (type === 'error') {
+                bgBorder = 'bg-red-950 border-red-500/70 text-red-100';
+                icon = 'fa-circle-exclamation text-red-400';
+            }
+
+            toast.className = `${bgBorder} border rounded-xl p-3.5 shadow-2xl flex items-start space-x-3 pointer-events-auto transition-all duration-300 transform translate-y-2 opacity-0`;
+            toast.innerHTML = `
+                <i class="fa-solid ${icon} text-lg mt-0.5"></i>
+                <div class="flex-1">
+                    <h5 class="text-xs font-bold font-mono uppercase tracking-wider">${escapeHtml(title)}</h5>
+                    <p class="text-xs mt-0.5 opacity-90">${escapeHtml(message)}</p>
+                </div>
+            `;
+
+            container.appendChild(toast);
+
+            // Animate In
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            // Auto Remove after 4 seconds
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-[-4px]');
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        }
+
+        // Helper to Sanitize Input Strings
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>"']/g, function(m) {
+                return {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                }[m];
+            });
+        }
+    </script>
+</body>
+</html>
