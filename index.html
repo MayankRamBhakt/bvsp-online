@@ -354,6 +354,70 @@
 
     <!-- JavaScript Application Logic -->
     <script>
+        // Stat// Triage Logic Evaluator
+        function evaluateTriage(hr, spo2, bp, temp) {
+            // ... your existing code ...
+        }
+
+        // ---> PASTE THE EMERGENCY DISPATCH FUNCTION HERE <---
+        const EMERGENCY_DISPATCH_ENDPOINT = "https://api.emergency.gov/v1/triage/alert";
+
+        async function dispatchToEmergencyServices(record) {
+            const userConsent = confirm(
+                `🚨 CRITICAL ALERT DETECTED FOR PATIENT ${record.patientId}!\n\n` +
+                `Vital signs exceed safe safety thresholds:\n` +
+                `${record.warnings.join('\n')}\n\n` +
+                `Do you give permission to automatically transmit this emergency telemetry data and GPS coordinates to the nearest Hospital / Government Emergency Response Unit?`
+            );
+
+            if (!userConsent) {
+                showToast("Dispatch Cancelled", "Emergency transmission aborted by user.", "warning");
+                return;
+            }
+
+            showToast("Initiating Dispatch", "Contacting Government Emergency Telemetry Node...", "info");
+
+            const dispatchPayload = {
+                agencyId: "BVSP-FIELD-NODE-01",
+                timestamp: new Date().toISOString(),
+                patient: {
+                    id: record.patientId,
+                    vitals: {
+                        heartRate: record.heartRate,
+                        spo2: record.spo2,
+                        bloodPressure: record.bp,
+                        temperature: record.temp
+                    },
+                    notes: record.notes
+                },
+                triageStatus: "CRITICAL_RED",
+                alerts: record.warnings,
+                location: { latitude: 22.5726, longitude: 88.3639 }
+            };
+
+            try {
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                record.dispatchedToGov = true;
+                saveToLocalStorage();
+                updateUI();
+                showToast("Emergency Unit Alerted!", `Telemetry transmitted for ${record.patientId}.`, "success");
+            } catch (error) {
+                showToast("Dispatch Failed", "Unable to connect to server.", "error");
+            }
+        }
+
+        // Handle Form Submission
+        function handleFormSubmit(event) {
+            event.preventDefault();
+            // ... inside here, where targe.isCritical is checked:
+            if (triage.isCritical) {
+                showToast("⚠️ CRITICAL TELEMETRY ALERT", `Patient ${patientId} flagged with priority warnings!`, "error");
+                
+                // Trigger the emergency dispatch prompt here:
+                dispatchToEmergencyServices(newRecord);
+            }
+        }
+
         // State Management
         let isOnline = true;
         let records = [];
