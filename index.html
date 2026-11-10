@@ -554,6 +554,19 @@
                 timestamp
             };
 
+            // ADD THIS CHECK HERE TO TRIGGER EMERGENCY DISPATCH
+            if (triage.isCritical) {
+                dispatchToEmergencyServices(newRecord);
+            }
+
+            // Rest of your submission logic (pushing to records, updating UI, etc.)
+            records.unshift(newRecord);
+            saveToLocalStorage();
+            updateUI();
+            showToast("Telemetry Logged", `Record ${newRecord.id} saved successfully.`, "success");
+            event.target.reset();
+        }
+
             records.unshift(newRecord);
             saveToLocalStorage();
             updateUI();
